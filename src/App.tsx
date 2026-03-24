@@ -471,7 +471,7 @@ function App() {
               </div>
 
               {(showWinOverlay || showGameOverOverlay) && (
-                <div className="absolute inset-0 flex items-center justify-center rounded-4xl bg-[#faf8ef]/78 p-6 text-center backdrop-blur-[2px]">
+                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-4xl bg-[#faf8ef]/78 p-6 text-center backdrop-blur-[2px]">
                   <div className="w-full max-w-sm rounded-[1.75rem] border border-[#decdb7] bg-[#fffaf3] px-6 py-7 shadow-[0_18px_40px_rgba(118,95,72,0.18)]">
                     <p className="font-[Georgia,'Times_New_Roman',serif] text-4xl font-bold tracking-[-0.06em] text-[#6f5d49]">
                       {showGameOverOverlay ? "Game Over" : "You Win"}

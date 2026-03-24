@@ -1,6 +1,13 @@
 import { Description, Dialog, DialogPanel, DialogTitle } from "@headlessui/react";
 import { Icon, addIcon, type IconifyIcon } from "@iconify/react";
-import { useEffect, useEffectEvent, useRef, useState, type TouchEvent } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type CSSProperties,
+  type TouchEvent,
+} from "react";
 import {
   type Board,
   type Direction,
@@ -11,8 +18,9 @@ import {
 } from "./game";
 
 const BEST_SCORE_KEY = "classic-2048-best-score";
-const MOVE_ANIMATION_MS = 150;
-const POP_ANIMATION_MS = 180;
+const DESKTOP_MOVE_ANIMATION_MS = 150;
+const MOBILE_MOVE_ANIMATION_MS = 110;
+const POP_ANIMATION_MS = 170;
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -118,6 +126,14 @@ function isAppleMobileDevice(): boolean {
   }
 
   return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+function isMobileViewport(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return window.matchMedia("(max-width: 639px)").matches;
 }
 
 function readBestScore(): number {
@@ -298,6 +314,7 @@ function App() {
     return initialGame;
   });
   const [bestScore, setBestScore] = useState<number>(() => readBestScore());
+  const [isMobileScreen, setIsMobileScreen] = useState(() => isMobileViewport());
   const [isHelpOpen, setIsHelpOpen] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -321,6 +338,7 @@ function App() {
   const settleTimerRef = useRef<number | null>(null);
   const popTimerRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
+  const moveAnimationMs = isMobileScreen ? MOBILE_MOVE_ANIMATION_MS : DESKTOP_MOVE_ANIMATION_MS;
 
   const clearAnimation = () => {
     if (animationFrameRef.current !== null) {
@@ -373,7 +391,7 @@ function App() {
         popTimerRef.current = null;
         finishWithBoard(moveResult.board);
       }, POP_ANIMATION_MS);
-    }, MOVE_ANIMATION_MS);
+    }, moveAnimationMs);
   });
 
   const restartGame = useEffectEvent(() => {
@@ -503,10 +521,15 @@ function App() {
       return;
     }
 
+    const mobileViewportMedia = window.matchMedia("(max-width: 639px)");
     const displayModeMedia = window.matchMedia("(display-mode: standalone)");
 
     const syncInstalledState = () => {
       setIsAppInstalled(isStandaloneDisplay());
+    };
+
+    const syncViewportState = () => {
+      setIsMobileScreen(mobileViewportMedia.matches);
     };
 
     const handleBeforeInstallPrompt = (event: Event) => {
@@ -532,10 +555,12 @@ function App() {
     };
 
     syncInstalledState();
+    syncViewportState();
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
     window.addEventListener("appinstalled", handleAppInstalled);
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+    mobileViewportMedia.addEventListener("change", syncViewportState);
     displayModeMedia.addEventListener("change", syncInstalledState);
 
     return () => {
@@ -543,6 +568,7 @@ function App() {
       window.removeEventListener("appinstalled", handleAppInstalled);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      mobileViewportMedia.removeEventListener("change", syncViewportState);
       displayModeMedia.removeEventListener("change", syncInstalledState);
     };
   }, []);
@@ -728,6 +754,12 @@ function App() {
                 className="game-board relative aspect-square touch-none rounded-4xl border border-[#d3c1ab] bg-[#bbada0] shadow-[0_24px_50px_rgba(122,100,80,0.18)]"
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
+                style={
+                  {
+                    "--move-duration": `${moveAnimationMs}ms`,
+                    "--pop-duration": `${POP_ANIMATION_MS}ms`,
+                  } as CSSProperties
+                }
               >
                 <div className="board-background grid h-full grid-cols-4">
                   {Array.from({ length: 16 }, (_, index) => (

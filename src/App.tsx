@@ -1,3 +1,4 @@
+import { Description, Dialog, DialogPanel, DialogTitle } from "@headlessui/react";
 import { Icon, addIcon, type IconifyIcon } from "@iconify/react";
 import { useEffect, useEffectEvent, useRef, useState, type TouchEvent } from "react";
 import {
@@ -260,6 +261,7 @@ function App() {
   });
   const [bestScore, setBestScore] = useState<number>(() => readBestScore());
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isRestartConfirmOpen, setIsRestartConfirmOpen] = useState(false);
   const [renderTiles, setRenderTiles] = useState<RenderTile[]>(() => initialRenderTilesRef.current);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const gameRef = useRef(game);
@@ -341,6 +343,19 @@ function App() {
 
     gameRef.current = nextGame;
     setGame(nextGame);
+  });
+
+  const openRestartConfirm = useEffectEvent(() => {
+    setIsRestartConfirmOpen(true);
+  });
+
+  const closeRestartConfirm = useEffectEvent(() => {
+    setIsRestartConfirmOpen(false);
+  });
+
+  const confirmRestart = useEffectEvent(() => {
+    setIsRestartConfirmOpen(false);
+    restartGame();
   });
 
   const playMove = useEffectEvent((direction: Direction) => {
@@ -465,141 +480,176 @@ function App() {
       : "Playing";
 
   return (
-    <main className="min-h-screen px-4 py-6 text-[#5b5048] sm:px-6 lg:px-10">
-      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-6xl flex-col rounded-4xl border border-white/65 bg-white/45 p-5 shadow-[0_25px_80px_rgba(110,93,74,0.14)] backdrop-blur md:p-8">
-        <div className="grid flex-1 gap-8 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
-          <section className="flex flex-col justify-between gap-6">
-            <div className="space-y-5">
-              <div className="inline-flex w-fit items-center rounded-full border border-[#d4c2ab] bg-[#f7efe3] px-4 py-2 text-[0.72rem] font-semibold tracking-[0.28em] text-[#8b7355] uppercase">
-                Classic 2048
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <p className="font-[Georgia,'Times_New_Roman',serif] text-6xl leading-none font-bold tracking-[-0.08em] text-[#6a5845] sm:text-7xl">
-                    2048
-                  </p>
-                  <p className="mt-3 max-w-md text-base leading-7 text-[#6d6158] sm:text-lg">
-                    合併相同數字、一路推進到 2048。達標後仍可繼續挑戰更高分。
-                  </p>
+    <>
+      <main className="min-h-screen px-4 py-6 text-[#5b5048] sm:px-6 lg:px-10">
+        <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-6xl flex-col rounded-4xl border border-white/65 bg-white/45 p-5 shadow-[0_25px_80px_rgba(110,93,74,0.14)] backdrop-blur md:p-8">
+          <div className="grid flex-1 gap-8 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
+            <section className="flex flex-col justify-between gap-6">
+              <div className="space-y-5">
+                <div className="inline-flex w-fit items-center rounded-full border border-[#d4c2ab] bg-[#f7efe3] px-4 py-2 text-[0.72rem] font-semibold tracking-[0.28em] text-[#8b7355] uppercase">
+                  Classic 2048
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <ScoreCard label="Score" value={game.score} />
-                  <ScoreCard label="Best" value={bestScore} />
+                <div className="space-y-4">
+                  <div>
+                    <p className="font-[Georgia,'Times_New_Roman',serif] text-6xl leading-none font-bold tracking-[-0.08em] text-[#6a5845] sm:text-7xl">
+                      2048
+                    </p>
+                    <p className="mt-3 max-w-md text-base leading-7 text-[#6d6158] sm:text-lg">
+                      合併相同數字、一路推進到 2048。達標後仍可繼續挑戰更高分。
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <ScoreCard label="Score" value={game.score} />
+                    <ScoreCard label="Best" value={bestScore} />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="rounded-[1.75rem] border border-[#d8c9b7] bg-[#f8f2e8] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex flex-wrap gap-3">
+              <div className="rounded-[1.75rem] border border-[#d8c9b7] bg-[#f8f2e8] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={openRestartConfirm}
+                      className="inline-flex items-center gap-2 rounded-full bg-[#8f7a66] px-4 py-2.5 text-xs font-semibold tracking-[0.18em] text-[#f9f6f2] uppercase transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
+                    >
+                      <AppIcon icon="app:plus" className="text-sm" />
+                      New Game
+                    </button>
+                    <div className="inline-flex items-center gap-2 rounded-full bg-[#ede3d2] px-4 py-3 text-sm font-semibold tracking-[0.18em] text-[#8f7a66] uppercase">
+                      <AppIcon icon={statusIcon} className="text-base" />
+                      {statusLabel}
+                    </div>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={restartGame}
-                    className="inline-flex items-center gap-2 rounded-full bg-[#8f7a66] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#f9f6f2] uppercase transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
+                    aria-expanded={isHelpOpen}
+                    onClick={() => {
+                      setIsHelpOpen((previousValue) => !previousValue);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full border border-[#d8c9b7] bg-[#fff8ee] px-4 py-3 text-sm font-semibold tracking-[0.16em] text-[#8f7a66] uppercase transition hover:bg-[#f7efe2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
                   >
-                    <AppIcon icon="app:plus" className="text-base" />
-                    New Game
+                    <AppIcon icon="app:book-open-text" className="text-base" />
+                    How To Play
+                    <AppIcon
+                      icon="app:chevron-down"
+                      className={`text-base transition-transform duration-200 ${isHelpOpen ? "rotate-180" : ""}`}
+                    />
                   </button>
-                  <div className="inline-flex items-center gap-2 rounded-full bg-[#ede3d2] px-4 py-3 text-sm font-semibold tracking-[0.18em] text-[#8f7a66] uppercase">
-                    <AppIcon icon={statusIcon} className="text-base" />
-                    {statusLabel}
-                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  aria-expanded={isHelpOpen}
-                  onClick={() => {
-                    setIsHelpOpen((previousValue) => !previousValue);
-                  }}
-                  className="inline-flex items-center gap-2 rounded-full border border-[#d8c9b7] bg-[#fff8ee] px-4 py-3 text-sm font-semibold tracking-[0.16em] text-[#8f7a66] uppercase transition hover:bg-[#f7efe2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
+                <div
+                  className={`grid overflow-hidden transition-[grid-template-rows,margin-top,opacity] duration-200 ${
+                    isHelpOpen
+                      ? "mt-5 grid-rows-[1fr] opacity-100"
+                      : "mt-0 grid-rows-[0fr] opacity-0"
+                  }`}
                 >
-                  <AppIcon icon="app:book-open-text" className="text-base" />
-                  How To Play
-                  <AppIcon
-                    icon="app:chevron-down"
-                    className={`text-base transition-transform duration-200 ${isHelpOpen ? "rotate-180" : ""}`}
-                  />
-                </button>
-              </div>
-
-              <div
-                className={`grid overflow-hidden transition-[grid-template-rows,margin-top,opacity] duration-200 ${
-                  isHelpOpen ? "mt-5 grid-rows-[1fr] opacity-100" : "mt-0 grid-rows-[0fr] opacity-0"
-                }`}
-              >
-                <div className="min-h-0 overflow-hidden">
-                  <div className="space-y-3 text-sm leading-6 text-[#74665a]">
-                    <p>
-                      使用方向鍵或 <span className="font-semibold">WASD</span>{" "}
-                      操作，手機上則可直接滑動棋盤。
-                    </p>
-                    <p>每一步只有真的移動或合併成功時，棋盤才會新增一個新方塊。</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="mx-auto w-full max-w-152">
-            <div
-              className="game-board relative aspect-square touch-none rounded-4xl border border-[#d3c1ab] bg-[#bbada0] shadow-[0_24px_50px_rgba(122,100,80,0.18)]"
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
-            >
-              <div className="board-background grid h-full grid-cols-4">
-                {Array.from({ length: 16 }, (_, index) => (
-                  <BackgroundCell key={index} />
-                ))}
-              </div>
-
-              <div className="board-tile-layer">
-                {renderTiles.map((tile) => (
-                  <TileSprite key={tile.id} tile={tile} />
-                ))}
-              </div>
-
-              {(showWinOverlay || showGameOverOverlay) && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-4xl bg-[#faf8ef]/78 p-6 text-center backdrop-blur-[2px]">
-                  <div className="w-full max-w-sm rounded-[1.75rem] border border-[#decdb7] bg-[#fffaf3] px-6 py-7 shadow-[0_18px_40px_rgba(118,95,72,0.18)]">
-                    <p className="font-[Georgia,'Times_New_Roman',serif] text-4xl font-bold tracking-[-0.06em] text-[#6f5d49]">
-                      {showGameOverOverlay ? "Game Over" : "You Win"}
-                    </p>
-                    <p className="mt-3 text-sm leading-6 text-[#75675a]">
-                      {showGameOverOverlay
-                        ? "棋盤沒有可用的移動了，重新開始再挑一次。"
-                        : "你已經合成 2048，可以繼續衝分，或直接重開新局。"}
-                    </p>
-                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center">
-                      {!showGameOverOverlay ? (
-                        <button
-                          type="button"
-                          onClick={continuePlaying}
-                          className="inline-flex items-center justify-center gap-2 rounded-full bg-[#edc22e] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#5b4300] uppercase transition hover:bg-[#ddb01d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#edc22e]"
-                        >
-                          <AppIcon icon="app:arrow-right" className="text-base" />
-                          Continue
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={restartGame}
-                        className="inline-flex items-center justify-center gap-2 rounded-full bg-[#8f7a66] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#f9f6f2] uppercase transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
-                      >
-                        <AppIcon icon="app:rotate-ccw" className="text-base" />
-                        Restart
-                      </button>
+                  <div className="min-h-0 overflow-hidden">
+                    <div className="space-y-3 text-sm leading-6 text-[#74665a]">
+                      <p>
+                        使用方向鍵或 <span className="font-semibold">WASD</span>{" "}
+                        操作，手機上則可直接滑動棋盤。
+                      </p>
+                      <p>每一步只有真的移動或合併成功時，棋盤才會新增一個新方塊。</p>
                     </div>
                   </div>
                 </div>
-              )}
-            </div>
-          </section>
+              </div>
+            </section>
+
+            <section className="mx-auto w-full max-w-152">
+              <div
+                className="game-board relative aspect-square touch-none rounded-4xl border border-[#d3c1ab] bg-[#bbada0] shadow-[0_24px_50px_rgba(122,100,80,0.18)]"
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+              >
+                <div className="board-background grid h-full grid-cols-4">
+                  {Array.from({ length: 16 }, (_, index) => (
+                    <BackgroundCell key={index} />
+                  ))}
+                </div>
+
+                <div className="board-tile-layer">
+                  {renderTiles.map((tile) => (
+                    <TileSprite key={tile.id} tile={tile} />
+                  ))}
+                </div>
+
+                {(showWinOverlay || showGameOverOverlay) && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center rounded-4xl bg-[#faf8ef]/78 p-6 text-center backdrop-blur-[2px]">
+                    <div className="w-full max-w-sm rounded-[1.75rem] border border-[#decdb7] bg-[#fffaf3] px-6 py-7 shadow-[0_18px_40px_rgba(118,95,72,0.18)]">
+                      <p className="font-[Georgia,'Times_New_Roman',serif] text-4xl font-bold tracking-[-0.06em] text-[#6f5d49]">
+                        {showGameOverOverlay ? "Game Over" : "You Win"}
+                      </p>
+                      <p className="mt-3 text-sm leading-6 text-[#75675a]">
+                        {showGameOverOverlay
+                          ? "棋盤沒有可用的移動了，重新開始再挑一次。"
+                          : "你已經合成 2048，可以繼續衝分，或直接重開新局。"}
+                      </p>
+                      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                        {!showGameOverOverlay ? (
+                          <button
+                            type="button"
+                            onClick={continuePlaying}
+                            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#edc22e] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#5b4300] uppercase transition hover:bg-[#ddb01d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#edc22e]"
+                          >
+                            <AppIcon icon="app:arrow-right" className="text-base" />
+                            Continue
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={openRestartConfirm}
+                          className="inline-flex items-center justify-center gap-2 rounded-full bg-[#8f7a66] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#f9f6f2] uppercase transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
+                        >
+                          <AppIcon icon="app:rotate-ccw" className="text-base" />
+                          Restart
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
+
+      <Dialog open={isRestartConfirmOpen} onClose={closeRestartConfirm} className="relative z-30">
+        <div className="fixed inset-0 bg-[#faf8ef]/76 backdrop-blur-[3px]" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <DialogPanel className="w-full max-w-sm rounded-[1.75rem] border border-[#decdb7] bg-[#fffaf3] px-6 py-7 text-center shadow-[0_18px_40px_rgba(118,95,72,0.18)]">
+            <DialogTitle className="font-[Georgia,'Times_New_Roman',serif] text-3xl font-bold tracking-[-0.06em] text-[#6f5d49]">
+              Start New Game?
+            </DialogTitle>
+            <Description className="mt-3 text-sm leading-6 text-[#75675a]">
+              目前進度會直接清除。確認後會重新產生新的棋盤。
+            </Description>
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <button
+                type="button"
+                onClick={closeRestartConfirm}
+                className="inline-flex items-center justify-center rounded-full border border-[#d8c9b7] bg-[#fff8ee] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#8f7a66] uppercase transition hover:bg-[#f7efe2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmRestart}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-[#8f7a66] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#f9f6f2] uppercase transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
+              >
+                <AppIcon icon="app:rotate-ccw" className="text-base" />
+                Confirm
+              </button>
+            </div>
+          </DialogPanel>
+        </div>
+      </Dialog>
+    </>
   );
 }
 

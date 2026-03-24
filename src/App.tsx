@@ -1,12 +1,32 @@
 import { useEffect, useEffectEvent, useRef, useState, type TouchEvent } from "react";
-import { type Direction, type Tile, createInitialGame, moveBoard } from "./game";
+import {
+  type Board,
+  type Direction,
+  type MoveResult,
+  type Tile,
+  createInitialGame,
+  moveBoard,
+} from "./game";
 
 const BEST_SCORE_KEY = "classic-2048-best-score";
+const MOVE_ANIMATION_MS = 150;
+const POP_ANIMATION_MS = 180;
 
 type GameViewState = ReturnType<typeof createInitialGame> & {
   hasWon: boolean;
   keepPlaying: boolean;
   isGameOver: boolean;
+};
+
+type BoardTile = Tile & {
+  row: number;
+  col: number;
+};
+
+type RenderTile = BoardTile & {
+  isSliding: boolean;
+  isFresh: boolean;
+  isMerged: boolean;
 };
 
 const scoreCardBaseClass =
@@ -103,81 +123,234 @@ function getTileTextSize(value: number): string {
   return "text-xl sm:text-2xl";
 }
 
+function getBoardTiles(board: Board): BoardTile[] {
+  return board.flatMap((row, rowIndex) =>
+    row.flatMap((tile, colIndex) => (tile ? [{ ...tile, row: rowIndex, col: colIndex }] : [])),
+  );
+}
+
+function createSettledRenderTiles(
+  board: Board,
+  options?: {
+    freshTileIds?: Set<number>;
+    mergedTileIds?: Set<number>;
+  },
+): RenderTile[] {
+  const freshTileIds = options?.freshTileIds ?? new Set<number>();
+  const mergedTileIds = options?.mergedTileIds ?? new Set<number>();
+
+  return getBoardTiles(board).map((tile) => ({
+    ...tile,
+    isSliding: false,
+    isFresh: freshTileIds.has(tile.id),
+    isMerged: mergedTileIds.has(tile.id),
+  }));
+}
+
+function createMotionRenderTiles(moveResult: MoveResult, target: "from" | "to"): RenderTile[] {
+  return moveResult.animation.motions.map((motion) => ({
+    id: motion.id,
+    value: motion.value,
+    row: motion[target].row,
+    col: motion[target].col,
+    isSliding: target === "to",
+    isFresh: false,
+    isMerged: false,
+  }));
+}
+
 function ScoreCard({ label, value }: { label: string; value: number }) {
   return (
     <div className={scoreCardBaseClass}>
-      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.28em] text-[#eee4da]">
+      <p className="text-[0.68rem] font-semibold tracking-[0.28em] text-[#eee4da] uppercase">
         {label}
       </p>
-      <p className="mt-1 text-2xl font-bold leading-none">{formatScore(value)}</p>
+      <p className="mt-1 text-2xl leading-none font-bold">{formatScore(value)}</p>
     </div>
   );
 }
 
-function TileCell({ tile }: { tile: Tile | null }) {
+function BackgroundCell() {
+  return <div className="relative aspect-square rounded-2xl bg-[#cdc1b4]/85" />;
+}
+
+function TileSprite({ tile }: { tile: RenderTile }) {
+  const movementClass = tile.isSliding ? "board-tile--moving" : "board-tile--still";
+  const emphasisClass = tile.isFresh
+    ? "board-tile__surface--fresh"
+    : tile.isMerged
+      ? "board-tile__surface--merged"
+      : "";
+
   return (
-    <div className="relative aspect-square rounded-2xl bg-[#cdc1b4]/85">
-      {tile ? (
-        <div
-          className={`absolute inset-0 flex items-center justify-center rounded-2xl font-black tracking-[-0.06em] shadow-[0_10px_24px_rgba(140,119,97,0.18)] transition-all duration-150 ${getTileStyles(tile.value)} ${getTileTextSize(tile.value)}`}
-        >
-          {tile.value}
-        </div>
-      ) : null}
+    <div
+      className={`board-tile ${movementClass}`}
+      style={{
+        transform: `translate(calc(${tile.col} * (100% + var(--board-gap))), calc(${tile.row} * (100% + var(--board-gap))))`,
+        zIndex: tile.isSliding ? 2 : 1,
+      }}
+    >
+      <div
+        className={`board-tile__surface flex items-center justify-center rounded-2xl font-black tracking-[-0.06em] shadow-[0_10px_24px_rgba(140,119,97,0.18)] ${emphasisClass} ${getTileStyles(tile.value)} ${getTileTextSize(tile.value)}`}
+      >
+        {tile.value}
+      </div>
     </div>
   );
 }
 
 function App() {
-  const [game, setGame] = useState<GameViewState>(() => createGameState());
+  const initialRenderTilesRef = useRef<RenderTile[]>([]);
+  const [game, setGame] = useState<GameViewState>(() => {
+    const initialGame = createGameState();
+    initialRenderTilesRef.current = createSettledRenderTiles(initialGame.board);
+    return initialGame;
+  });
   const [bestScore, setBestScore] = useState<number>(() => readBestScore());
+  const [renderTiles, setRenderTiles] = useState<RenderTile[]>(() => initialRenderTilesRef.current);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const gameRef = useRef(game);
+  const bestScoreRef = useRef(bestScore);
+  const animationFrameRef = useRef<number | null>(null);
+  const settleTimerRef = useRef<number | null>(null);
+  const popTimerRef = useRef<number | null>(null);
+  const isAnimatingRef = useRef(false);
+
+  const clearAnimation = () => {
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    if (settleTimerRef.current !== null) {
+      window.clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
+    }
+
+    if (popTimerRef.current !== null) {
+      window.clearTimeout(popTimerRef.current);
+      popTimerRef.current = null;
+    }
+  };
+
+  const finishWithBoard = useEffectEvent((board: Board) => {
+    setRenderTiles(createSettledRenderTiles(board));
+  });
+
+  const animateMove = useEffectEvent((moveResult: MoveResult) => {
+    clearAnimation();
+
+    const highlightedTileIds = moveResult.animation.spawnedTile
+      ? new Set([moveResult.animation.spawnedTile.id])
+      : undefined;
+    const mergedTileIds = new Set(moveResult.animation.mergedTiles.map((tile) => tile.id));
+
+    isAnimatingRef.current = true;
+    setRenderTiles(createMotionRenderTiles(moveResult, "from"));
+
+    animationFrameRef.current = window.requestAnimationFrame(() => {
+      animationFrameRef.current = null;
+      setRenderTiles(createMotionRenderTiles(moveResult, "to"));
+    });
+
+    settleTimerRef.current = window.setTimeout(() => {
+      settleTimerRef.current = null;
+      isAnimatingRef.current = false;
+      setRenderTiles(
+        createSettledRenderTiles(moveResult.board, {
+          freshTileIds: highlightedTileIds,
+          mergedTileIds,
+        }),
+      );
+
+      popTimerRef.current = window.setTimeout(() => {
+        popTimerRef.current = null;
+        finishWithBoard(moveResult.board);
+      }, POP_ANIMATION_MS);
+    }, MOVE_ANIMATION_MS);
+  });
 
   const restartGame = useEffectEvent(() => {
-    setGame(createGameState());
+    clearAnimation();
+    isAnimatingRef.current = false;
+
+    const nextGame = createGameState();
+    gameRef.current = nextGame;
+    setGame(nextGame);
+    setRenderTiles(createSettledRenderTiles(nextGame.board));
   });
 
   const continuePlaying = useEffectEvent(() => {
-    setGame((previousGame) => ({
-      ...previousGame,
+    const nextGame = {
+      ...gameRef.current,
       keepPlaying: true,
-    }));
+    };
+
+    gameRef.current = nextGame;
+    setGame(nextGame);
   });
 
   const playMove = useEffectEvent((direction: Direction) => {
-    let nextBestScore = bestScore;
+    if (isAnimatingRef.current) {
+      return;
+    }
 
-    setGame((previousGame) => {
-      if (previousGame.isGameOver) {
-        return previousGame;
+    const previousGame = gameRef.current;
+
+    if (previousGame.isGameOver || (previousGame.hasWon && !previousGame.keepPlaying)) {
+      return;
+    }
+
+    const moveResult = moveBoard(previousGame.board, direction, previousGame.nextTileId);
+
+    if (!moveResult.moved) {
+      if (moveResult.isGameOver && !previousGame.isGameOver) {
+        const nextGame = {
+          ...previousGame,
+          isGameOver: true,
+        };
+
+        gameRef.current = nextGame;
+        setGame(nextGame);
       }
 
-      if (previousGame.hasWon && !previousGame.keepPlaying) {
-        return previousGame;
-      }
+      return;
+    }
 
-      const moveResult = moveBoard(previousGame.board, direction, previousGame.nextTileId);
+    const nextScore = previousGame.score + moveResult.scoreGained;
+    const nextGame = {
+      ...moveResult,
+      score: nextScore,
+      hasWon: previousGame.hasWon || moveResult.reached2048,
+      keepPlaying: previousGame.keepPlaying,
+      isGameOver: moveResult.isGameOver,
+    };
 
-      if (!moveResult.moved) {
-        return moveResult.isGameOver ? { ...previousGame, isGameOver: true } : previousGame;
-      }
+    gameRef.current = nextGame;
+    setGame(nextGame);
+    animateMove(moveResult);
 
-      const nextScore = previousGame.score + moveResult.scoreGained;
-      nextBestScore = Math.max(nextBestScore, nextScore);
+    const nextBestScore = Math.max(bestScoreRef.current, nextScore);
 
-      return {
-        ...moveResult,
-        score: nextScore,
-        hasWon: previousGame.hasWon || moveResult.reached2048,
-        keepPlaying: previousGame.keepPlaying,
-        isGameOver: moveResult.isGameOver,
-      };
-    });
-
-    if (nextBestScore !== bestScore) {
+    if (nextBestScore !== bestScoreRef.current) {
+      bestScoreRef.current = nextBestScore;
       setBestScore(nextBestScore);
     }
   });
+
+  useEffect(() => {
+    gameRef.current = game;
+  }, [game]);
+
+  useEffect(() => {
+    bestScoreRef.current = bestScore;
+  }, [bestScore]);
+
+  useEffect(() => {
+    return () => {
+      clearAnimation();
+    };
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(BEST_SCORE_KEY, String(bestScore));
@@ -230,17 +403,17 @@ function App() {
 
   return (
     <main className="min-h-screen px-4 py-6 text-[#5b5048] sm:px-6 lg:px-10">
-      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-6xl flex-col rounded-[2rem] border border-white/65 bg-white/45 p-5 shadow-[0_25px_80px_rgba(110,93,74,0.14)] backdrop-blur md:p-8">
+      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-6xl flex-col rounded-4xl border border-white/65 bg-white/45 p-5 shadow-[0_25px_80px_rgba(110,93,74,0.14)] backdrop-blur md:p-8">
         <div className="grid flex-1 gap-8 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
           <section className="flex flex-col justify-between gap-6">
             <div className="space-y-5">
-              <div className="inline-flex w-fit items-center rounded-full border border-[#d4c2ab] bg-[#f7efe3] px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-[#8b7355]">
+              <div className="inline-flex w-fit items-center rounded-full border border-[#d4c2ab] bg-[#f7efe3] px-4 py-2 text-[0.72rem] font-semibold tracking-[0.28em] text-[#8b7355] uppercase">
                 Classic 2048
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <p className="font-[Georgia,'Times_New_Roman',serif] text-6xl font-bold leading-none tracking-[-0.08em] text-[#6a5845] sm:text-7xl">
+                  <p className="font-[Georgia,'Times_New_Roman',serif] text-6xl leading-none font-bold tracking-[-0.08em] text-[#6a5845] sm:text-7xl">
                     2048
                   </p>
                   <p className="mt-3 max-w-md text-base leading-7 text-[#6d6158] sm:text-lg">
@@ -260,11 +433,11 @@ function App() {
                 <button
                   type="button"
                   onClick={restartGame}
-                  className="rounded-full bg-[#8f7a66] px-5 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f9f6f2] transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
+                  className="rounded-full bg-[#8f7a66] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#f9f6f2] uppercase transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
                 >
                   New Game
                 </button>
-                <div className="rounded-full bg-[#ede3d2] px-4 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#8f7a66]">
+                <div className="rounded-full bg-[#ede3d2] px-4 py-3 text-sm font-semibold tracking-[0.18em] text-[#8f7a66] uppercase">
                   {showGameOverOverlay ? "Game Over" : showWinOverlay ? "2048 Reached" : "Playing"}
                 </div>
               </div>
@@ -279,20 +452,26 @@ function App() {
             </div>
           </section>
 
-          <section className="mx-auto w-full max-w-[38rem]">
+          <section className="mx-auto w-full max-w-152">
             <div
-              className="relative aspect-square rounded-[2rem] border border-[#d3c1ab] bg-[#bbada0] p-3 shadow-[0_24px_50px_rgba(122,100,80,0.18)] sm:p-4 [touch-action:none]"
+              className="game-board relative aspect-square touch-none rounded-4xl border border-[#d3c1ab] bg-[#bbada0] shadow-[0_24px_50px_rgba(122,100,80,0.18)]"
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
             >
-              <div className="grid h-full grid-cols-4 gap-3 sm:gap-4">
-                {game.board.flat().map((tile, index) => (
-                  <TileCell key={index} tile={tile} />
+              <div className="board-background grid h-full grid-cols-4">
+                {Array.from({ length: 16 }, (_, index) => (
+                  <BackgroundCell key={index} />
+                ))}
+              </div>
+
+              <div className="board-tile-layer">
+                {renderTiles.map((tile) => (
+                  <TileSprite key={tile.id} tile={tile} />
                 ))}
               </div>
 
               {(showWinOverlay || showGameOverOverlay) && (
-                <div className="absolute inset-0 flex items-center justify-center rounded-[2rem] bg-[#faf8ef]/78 p-6 text-center backdrop-blur-[2px]">
+                <div className="absolute inset-0 flex items-center justify-center rounded-4xl bg-[#faf8ef]/78 p-6 text-center backdrop-blur-[2px]">
                   <div className="w-full max-w-sm rounded-[1.75rem] border border-[#decdb7] bg-[#fffaf3] px-6 py-7 shadow-[0_18px_40px_rgba(118,95,72,0.18)]">
                     <p className="font-[Georgia,'Times_New_Roman',serif] text-4xl font-bold tracking-[-0.06em] text-[#6f5d49]">
                       {showGameOverOverlay ? "Game Over" : "You Win"}
@@ -307,7 +486,7 @@ function App() {
                         <button
                           type="button"
                           onClick={continuePlaying}
-                          className="rounded-full bg-[#edc22e] px-5 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#5b4300] transition hover:bg-[#ddb01d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#edc22e]"
+                          className="rounded-full bg-[#edc22e] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#5b4300] uppercase transition hover:bg-[#ddb01d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#edc22e]"
                         >
                           Continue
                         </button>
@@ -315,7 +494,7 @@ function App() {
                       <button
                         type="button"
                         onClick={restartGame}
-                        className="rounded-full bg-[#8f7a66] px-5 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f9f6f2] transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
+                        className="rounded-full bg-[#8f7a66] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#f9f6f2] uppercase transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
                       >
                         Restart
                       </button>

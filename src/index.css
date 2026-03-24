@@ -37,3 +37,64 @@ button {
 #root {
   min-height: 100vh;
 }
+
+.game-board {
+  --board-gap: 0.75rem;
+  padding: var(--board-gap);
+}
+
+.board-background {
+  gap: var(--board-gap);
+}
+
+.board-tile-layer {
+  position: absolute;
+  inset: var(--board-gap);
+  pointer-events: none;
+}
+
+.board-tile {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc((100% - var(--board-gap) * 3) / 4);
+  height: calc((100% - var(--board-gap) * 3) / 4);
+  will-change: transform;
+}
+
+.board-tile--moving {
+  transition: transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.board-tile__surface {
+  height: 100%;
+  width: 100%;
+}
+
+.board-tile__surface--fresh {
+  animation: tile-pop 180ms cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
+.board-tile__surface--merged {
+  animation: tile-pop 180ms cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
+@media (min-width: 640px) {
+  .game-board {
+    --board-gap: 1rem;
+  }
+}
+
+@keyframes tile-pop {
+  0% {
+    transform: scale(0.72);
+  }
+
+  70% {
+    transform: scale(1.08);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}

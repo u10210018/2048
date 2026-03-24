@@ -481,26 +481,26 @@ function App() {
 
   return (
     <>
-      <main className="min-h-screen px-4 py-6 text-[#5b5048] sm:px-6 lg:px-10">
+      <main className="min-h-screen px-4 py-5 text-[#5b5048] sm:px-6 sm:py-6 lg:px-10">
         <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-6xl flex-col rounded-4xl border border-white/65 bg-white/45 p-5 shadow-[0_25px_80px_rgba(110,93,74,0.14)] backdrop-blur md:p-8">
-          <div className="grid flex-1 gap-8 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
-            <section className="flex flex-col justify-between gap-6">
-              <div className="space-y-5">
+          <div className="grid flex-1 gap-5 sm:gap-8 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
+            <section className="order-2 flex flex-col justify-between gap-4 sm:gap-6 lg:order-1">
+              <div className="space-y-4 sm:space-y-5">
                 <div className="inline-flex w-fit items-center rounded-full border border-[#d4c2ab] bg-[#f7efe3] px-4 py-2 text-[0.72rem] font-semibold tracking-[0.28em] text-[#8b7355] uppercase">
                   Classic 2048
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   <div>
-                    <p className="font-[Georgia,'Times_New_Roman',serif] text-6xl leading-none font-bold tracking-[-0.08em] text-[#6a5845] sm:text-7xl">
+                    <p className="font-[Georgia,'Times_New_Roman',serif] text-5xl leading-none font-bold tracking-[-0.08em] text-[#6a5845] sm:text-7xl">
                       2048
                     </p>
-                    <p className="mt-3 max-w-md text-base leading-7 text-[#6d6158] sm:text-lg">
+                    <p className="mt-2 max-w-md text-sm leading-6 text-[#6d6158] sm:mt-3 sm:text-lg sm:leading-7">
                       合併相同數字、一路推進到 2048。達標後仍可繼續挑戰更高分。
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     <ScoreCard label="Score" value={game.score} />
                     <ScoreCard label="Best" value={bestScore} />
                   </div>
@@ -513,30 +513,35 @@ function App() {
                     <button
                       type="button"
                       onClick={openRestartConfirm}
-                      className="inline-flex items-center gap-2 rounded-full bg-[#8f7a66] px-4 py-2.5 text-xs font-semibold tracking-[0.18em] text-[#f9f6f2] uppercase transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
+                      aria-label="Start a new game"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#8f7a66] text-[#f9f6f2] transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66] sm:h-auto sm:w-auto sm:gap-2 sm:px-4 sm:py-2.5 sm:text-xs sm:font-semibold sm:tracking-[0.18em] sm:uppercase"
                     >
-                      <AppIcon icon="app:plus" className="text-sm" />
-                      New Game
+                      <AppIcon icon="app:plus" className="text-base sm:text-sm" />
+                      <span className="sr-only sm:not-sr-only">New Game</span>
                     </button>
-                    <div className="inline-flex items-center gap-2 rounded-full bg-[#ede3d2] px-4 py-3 text-sm font-semibold tracking-[0.18em] text-[#8f7a66] uppercase">
+                    <div
+                      aria-label={statusLabel}
+                      className="inline-flex h-10 min-w-10 items-center justify-center gap-2 rounded-full bg-[#ede3d2] px-3 text-sm font-semibold tracking-[0.18em] text-[#8f7a66] sm:h-auto sm:px-4 sm:py-3 sm:uppercase"
+                    >
                       <AppIcon icon={statusIcon} className="text-base" />
-                      {statusLabel}
+                      <span className="hidden sm:inline">{statusLabel}</span>
                     </div>
                   </div>
 
                   <button
                     type="button"
                     aria-expanded={isHelpOpen}
+                    aria-label={isHelpOpen ? "Collapse instructions" : "Expand instructions"}
                     onClick={() => {
                       setIsHelpOpen((previousValue) => !previousValue);
                     }}
-                    className="inline-flex items-center gap-2 rounded-full border border-[#d8c9b7] bg-[#fff8ee] px-4 py-3 text-sm font-semibold tracking-[0.16em] text-[#8f7a66] uppercase transition hover:bg-[#f7efe2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#d8c9b7] bg-[#fff8ee] text-[#8f7a66] transition hover:bg-[#f7efe2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66] sm:h-auto sm:w-auto sm:gap-2 sm:px-4 sm:py-3 sm:text-sm sm:font-semibold sm:tracking-[0.16em] sm:uppercase"
                   >
                     <AppIcon icon="app:book-open-text" className="text-base" />
-                    How To Play
+                    <span className="sr-only sm:not-sr-only">How To Play</span>
                     <AppIcon
                       icon="app:chevron-down"
-                      className={`text-base transition-transform duration-200 ${isHelpOpen ? "rotate-180" : ""}`}
+                      className={`hidden text-base transition-transform duration-200 sm:inline-block ${isHelpOpen ? "rotate-180" : ""}`}
                     />
                   </button>
                 </div>
@@ -561,7 +566,7 @@ function App() {
               </div>
             </section>
 
-            <section className="mx-auto w-full max-w-152">
+            <section className="order-1 mx-auto w-full max-w-152 lg:order-2">
               <div
                 className="game-board relative aspect-square touch-none rounded-4xl border border-[#d3c1ab] bg-[#bbada0] shadow-[0_24px_50px_rgba(122,100,80,0.18)]"
                 onTouchStart={handleTouchStart}

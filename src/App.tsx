@@ -175,7 +175,7 @@ function getDirectionFromKey(key: string): Direction | null {
 }
 
 function getSwipeDirection(deltaX: number, deltaY: number): Direction | null {
-  const minimumDistance = 28;
+  const minimumDistance = 18;
 
   if (Math.abs(deltaX) < minimumDistance && Math.abs(deltaY) < minimumDistance) {
     return null;
@@ -331,7 +331,7 @@ function App() {
   );
   const [notice, setNotice] = useState<Notice | null>(null);
   const [renderTiles, setRenderTiles] = useState<RenderTile[]>(() => initialRenderTilesRef.current);
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; handled: boolean } | null>(null);
   const gameRef = useRef(game);
   const bestScoreRef = useRef(bestScore);
   const animationFrameRef = useRef<number | null>(null);
@@ -609,7 +609,29 @@ function App() {
   const handleTouchStart = (event: TouchEvent<HTMLElement>) => {
     const touch = event.changedTouches[0];
 
-    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, handled: false };
+  };
+
+  const handleTouchMove = (event: TouchEvent<HTMLElement>) => {
+    const start = touchStartRef.current;
+    const touch = event.changedTouches[0];
+
+    if (!start || start.handled) {
+      return;
+    }
+
+    const direction = getSwipeDirection(touch.clientX - start.x, touch.clientY - start.y);
+
+    if (!direction) {
+      return;
+    }
+
+    event.preventDefault();
+    touchStartRef.current = {
+      ...start,
+      handled: true,
+    };
+    playMove(direction);
   };
 
   const handleTouchEnd = (event: TouchEvent<HTMLElement>) => {
@@ -621,6 +643,10 @@ function App() {
     }
 
     touchStartRef.current = null;
+
+    if (start.handled) {
+      return;
+    }
 
     const direction = getSwipeDirection(touch.clientX - start.x, touch.clientY - start.y);
 
@@ -753,6 +779,7 @@ function App() {
               <div
                 className="game-board relative aspect-square touch-none rounded-4xl border border-[#d3c1ab] bg-[#bbada0] shadow-[0_24px_50px_rgba(122,100,80,0.18)]"
                 onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
                 style={
                   {

@@ -42,6 +42,7 @@ button {
   --board-gap: 0.75rem;
   --move-duration: 150ms;
   --pop-duration: 170ms;
+  --merge-pop-duration: 120ms;
   padding: var(--board-gap);
 }
 
@@ -78,7 +79,7 @@ button {
 }
 
 .board-tile__surface--merged {
-  animation: tile-merge-settle 120ms cubic-bezier(0.26, 0.8, 0.36, 1.04);
+  animation: tile-merge-settle var(--merge-pop-duration) cubic-bezier(0.26, 0.8, 0.36, 1.04);
 }
 
 @media (min-width: 640px) {

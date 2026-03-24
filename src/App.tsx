@@ -785,6 +785,7 @@ function App() {
                   {
                     "--move-duration": `${moveAnimationMs}ms`,
                     "--pop-duration": `${POP_ANIMATION_MS}ms`,
+                    "--merge-pop-duration": isMobileScreen ? "0ms" : "120ms",
                   } as CSSProperties
                 }
               >

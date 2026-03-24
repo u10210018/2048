@@ -14,6 +14,20 @@ const BEST_SCORE_KEY = "classic-2048-best-score";
 const MOVE_ANIMATION_MS = 150;
 const POP_ANIMATION_MS = 180;
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
+type NavigatorWithStandalone = Navigator & {
+  standalone?: boolean;
+};
+
+type Notice = {
+  tone: "success" | "info";
+  message: string;
+};
+
 function createAppIcon(body: string): IconifyIcon {
   return {
     body,
@@ -46,6 +60,9 @@ const appIcons = {
   ),
   "app:rotate-ccw": createAppIcon(
     '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9a9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></g>',
+  ),
+  "app:download": createAppIcon(
+    '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5l5-5"/><path d="M5 21h14"/></g>',
   ),
 } satisfies Record<string, IconifyIcon>;
 
@@ -82,6 +99,27 @@ function createGameState(): GameViewState {
   };
 }
 
+function isStandaloneDisplay(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const navigatorWithStandalone = window.navigator as NavigatorWithStandalone;
+
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    Boolean(navigatorWithStandalone.standalone)
+  );
+}
+
+function isAppleMobileDevice(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
 function readBestScore(): number {
   if (typeof window === "undefined") {
     return 0;
@@ -94,7 +132,7 @@ function readBestScore(): number {
 }
 
 function formatScore(value: number): string {
-  return new Intl.NumberFormat("en-US").format(value);
+  return new Intl.NumberFormat("zh-Hant-TW").format(value);
 }
 
 function getDirectionFromKey(key: string): Direction | null {
@@ -260,8 +298,21 @@ function App() {
     return initialGame;
   });
   const [bestScore, setBestScore] = useState<number>(() => readBestScore());
-  const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("help") === "1",
+  );
   const [isRestartConfirmOpen, setIsRestartConfirmOpen] = useState(false);
+  const [isInstallGuideOpen, setIsInstallGuideOpen] = useState(false);
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(
+    null,
+  );
+  const [isAppInstalled, setIsAppInstalled] = useState(() => isStandaloneDisplay());
+  const [isOffline, setIsOffline] = useState(
+    () => typeof navigator !== "undefined" && !navigator.onLine,
+  );
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [renderTiles, setRenderTiles] = useState<RenderTile[]>(() => initialRenderTilesRef.current);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const gameRef = useRef(game);
@@ -358,6 +409,29 @@ function App() {
     restartGame();
   });
 
+  const closeInstallGuide = useEffectEvent(() => {
+    setIsInstallGuideOpen(false);
+  });
+
+  const triggerInstall = useEffectEvent(async () => {
+    if (installPromptEvent) {
+      await installPromptEvent.prompt();
+      const { outcome } = await installPromptEvent.userChoice;
+
+      if (outcome === "dismissed") {
+        setNotice({
+          tone: "info",
+          message: "已取消安裝，之後仍可再試一次。",
+        });
+      }
+
+      setInstallPromptEvent(null);
+      return;
+    }
+
+    setIsInstallGuideOpen(true);
+  });
+
   const playMove = useEffectEvent((direction: Direction) => {
     if (isAnimatingRef.current) {
       return;
@@ -425,6 +499,69 @@ function App() {
   }, [bestScore]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const displayModeMedia = window.matchMedia("(display-mode: standalone)");
+
+    const syncInstalledState = () => {
+      setIsAppInstalled(isStandaloneDisplay());
+    };
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPromptEvent(event as BeforeInstallPromptEvent);
+    };
+
+    const handleAppInstalled = () => {
+      setInstallPromptEvent(null);
+      setIsAppInstalled(true);
+      setNotice({
+        tone: "success",
+        message: "2048! 已安裝完成，現在可以像 App 一樣開啟。",
+      });
+    };
+
+    const handleOnline = () => {
+      setIsOffline(false);
+    };
+
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    syncInstalledState();
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
+    window.addEventListener("appinstalled", handleAppInstalled);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    displayModeMedia.addEventListener("change", syncInstalledState);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+      displayModeMedia.removeEventListener("change", syncInstalledState);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setNotice(null);
+    }, 3200);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [notice]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const direction = getDirectionFromKey(event.key);
 
@@ -468,41 +605,49 @@ function App() {
 
   const showWinOverlay = game.hasWon && !game.keepPlaying && !game.isGameOver;
   const showGameOverOverlay = game.isGameOver;
+  const canManualInstall = !isAppInstalled && installPromptEvent === null && isAppleMobileDevice();
+  const showInstallAction = !isAppInstalled && (installPromptEvent !== null || canManualInstall);
   const statusIcon = showGameOverOverlay
     ? "app:circle-x"
     : showWinOverlay
       ? "app:trophy"
       : "app:gamepad-2";
-  const statusLabel = showGameOverOverlay
-    ? "Game Over"
-    : showWinOverlay
-      ? "2048 Reached"
-      : "Playing";
+  const statusLabel = showGameOverOverlay ? "無法移動" : showWinOverlay ? "已達 2048" : "遊玩中";
 
   return (
     <>
       <main className="min-h-screen px-4 py-5 text-[#5b5048] sm:px-6 sm:py-6 lg:px-10">
         <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-6xl flex-col rounded-4xl border border-white/65 bg-white/45 p-5 shadow-[0_25px_80px_rgba(110,93,74,0.14)] backdrop-blur md:p-8">
+          {isOffline ? (
+            <div className="mb-4 flex items-start gap-3 rounded-[1.35rem] border border-[#e0d0bb] bg-[#fff5e9] px-4 py-3 text-sm leading-6 text-[#7a695a] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
+              <AppIcon icon="app:circle-x" className="mt-0.5 text-base text-[#b36a42]" />
+              <div>
+                <p className="font-semibold text-[#795f49]">目前為離線模式</p>
+                <p>已快取的 2048! 仍可正常遊玩；重新連線後會自動恢復更新。</p>
+              </div>
+            </div>
+          ) : null}
+
           <div className="grid flex-1 gap-5 sm:gap-8 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
             <section className="order-2 flex flex-col justify-between gap-4 sm:gap-6 lg:order-1">
               <div className="space-y-4 sm:space-y-5">
                 <div className="inline-flex w-fit items-center rounded-full border border-[#d4c2ab] bg-[#f7efe3] px-4 py-2 text-[0.72rem] font-semibold tracking-[0.28em] text-[#8b7355] uppercase">
-                  Classic 2048
+                  經典數字合併遊戲
                 </div>
 
                 <div className="space-y-3 sm:space-y-4">
                   <div>
                     <p className="font-[Georgia,'Times_New_Roman',serif] text-5xl leading-none font-bold tracking-[-0.08em] text-[#6a5845] sm:text-7xl">
-                      2048
+                      2048!
                     </p>
                     <p className="mt-2 max-w-md text-sm leading-6 text-[#6d6158] sm:mt-3 sm:text-lg sm:leading-7">
-                      合併相同數字、一路推進到 2048。達標後仍可繼續挑戰更高分。
+                      經典 2048 小遊戲，支援手機滑動、安裝成 App、離線遊玩與最佳分數保存。
                     </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                    <ScoreCard label="Score" value={game.score} />
-                    <ScoreCard label="Best" value={bestScore} />
+                    <ScoreCard label="分數" value={game.score} />
+                    <ScoreCard label="最佳" value={bestScore} />
                   </div>
                 </div>
               </div>
@@ -513,12 +658,23 @@ function App() {
                     <button
                       type="button"
                       onClick={openRestartConfirm}
-                      aria-label="Start a new game"
+                      aria-label="開始新遊戲"
                       className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#8f7a66] text-[#f9f6f2] transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66] sm:h-auto sm:w-auto sm:gap-2 sm:px-4 sm:py-2.5 sm:text-xs sm:font-semibold sm:tracking-[0.18em] sm:uppercase"
                     >
                       <AppIcon icon="app:plus" className="text-base sm:text-sm" />
-                      <span className="sr-only sm:not-sr-only">New Game</span>
+                      <span className="sr-only sm:not-sr-only">新遊戲</span>
                     </button>
+                    {showInstallAction ? (
+                      <button
+                        type="button"
+                        onClick={triggerInstall}
+                        aria-label="安裝 2048! App"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#d8c9b7] bg-[#fff8ee] text-[#8f7a66] transition hover:bg-[#f7efe2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66] sm:h-auto sm:w-auto sm:gap-2 sm:px-4 sm:py-2.5 sm:text-xs sm:font-semibold sm:tracking-[0.18em] sm:uppercase"
+                      >
+                        <AppIcon icon="app:download" className="text-base sm:text-sm" />
+                        <span className="sr-only sm:not-sr-only">安裝 App</span>
+                      </button>
+                    ) : null}
                     <div
                       aria-label={statusLabel}
                       className="inline-flex h-10 min-w-10 items-center justify-center gap-2 rounded-full bg-[#ede3d2] px-3 text-sm font-semibold tracking-[0.18em] text-[#8f7a66] sm:h-auto sm:px-4 sm:py-3 sm:uppercase"
@@ -531,14 +687,14 @@ function App() {
                   <button
                     type="button"
                     aria-expanded={isHelpOpen}
-                    aria-label={isHelpOpen ? "Collapse instructions" : "Expand instructions"}
+                    aria-label={isHelpOpen ? "收合玩法說明" : "展開玩法說明"}
                     onClick={() => {
                       setIsHelpOpen((previousValue) => !previousValue);
                     }}
                     className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#d8c9b7] bg-[#fff8ee] text-[#8f7a66] transition hover:bg-[#f7efe2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66] sm:h-auto sm:w-auto sm:gap-2 sm:px-4 sm:py-3 sm:text-sm sm:font-semibold sm:tracking-[0.16em] sm:uppercase"
                   >
                     <AppIcon icon="app:book-open-text" className="text-base" />
-                    <span className="sr-only sm:not-sr-only">How To Play</span>
+                    <span className="sr-only sm:not-sr-only">玩法</span>
                     <AppIcon
                       icon="app:chevron-down"
                       className={`hidden text-base transition-transform duration-200 sm:inline-block ${isHelpOpen ? "rotate-180" : ""}`}
@@ -557,9 +713,10 @@ function App() {
                     <div className="space-y-3 text-sm leading-6 text-[#74665a]">
                       <p>
                         使用方向鍵或 <span className="font-semibold">WASD</span>{" "}
-                        操作，手機上則可直接滑動棋盤。
+                        操作；手機上則可直接滑動棋盤。
                       </p>
-                      <p>每一步只有真的移動或合併成功時，棋盤才會新增一個新方塊。</p>
+                      <p>每一步只有在真的移動或合併成功時，棋盤才會新增一個新方塊。</p>
+                      <p>合成出 2048 後可以繼續挑戰更高分數。</p>
                     </div>
                   </div>
                 </div>
@@ -588,12 +745,12 @@ function App() {
                   <div className="absolute inset-0 z-10 flex items-center justify-center rounded-4xl bg-[#faf8ef]/78 p-6 text-center backdrop-blur-[2px]">
                     <div className="w-full max-w-sm rounded-[1.75rem] border border-[#decdb7] bg-[#fffaf3] px-6 py-7 shadow-[0_18px_40px_rgba(118,95,72,0.18)]">
                       <p className="font-[Georgia,'Times_New_Roman',serif] text-4xl font-bold tracking-[-0.06em] text-[#6f5d49]">
-                        {showGameOverOverlay ? "Game Over" : "You Win"}
+                        {showGameOverOverlay ? "遊戲結束" : "你完成了 2048!"}
                       </p>
                       <p className="mt-3 text-sm leading-6 text-[#75675a]">
                         {showGameOverOverlay
                           ? "棋盤沒有可用的移動了，重新開始再挑一次。"
-                          : "你已經合成 2048，可以繼續衝分，或直接重開新局。"}
+                          : "你已經合成 2048!，可以繼續衝分，或直接重開新局。"}
                       </p>
                       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center">
                         {!showGameOverOverlay ? (
@@ -603,7 +760,7 @@ function App() {
                             className="inline-flex items-center justify-center gap-2 rounded-full bg-[#edc22e] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#5b4300] uppercase transition hover:bg-[#ddb01d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#edc22e]"
                           >
                             <AppIcon icon="app:arrow-right" className="text-base" />
-                            Continue
+                            繼續挑戰
                           </button>
                         ) : null}
                         <button
@@ -612,7 +769,7 @@ function App() {
                           className="inline-flex items-center justify-center gap-2 rounded-full bg-[#8f7a66] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#f9f6f2] uppercase transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
                         >
                           <AppIcon icon="app:rotate-ccw" className="text-base" />
-                          Restart
+                          重新開始
                         </button>
                       </div>
                     </div>
@@ -629,7 +786,7 @@ function App() {
         <div className="fixed inset-0 flex items-center justify-center p-4">
           <DialogPanel className="w-full max-w-sm rounded-[1.75rem] border border-[#decdb7] bg-[#fffaf3] px-6 py-7 text-center shadow-[0_18px_40px_rgba(118,95,72,0.18)]">
             <DialogTitle className="font-[Georgia,'Times_New_Roman',serif] text-3xl font-bold tracking-[-0.06em] text-[#6f5d49]">
-              Start New Game?
+              確定要開始新局？
             </DialogTitle>
             <Description className="mt-3 text-sm leading-6 text-[#75675a]">
               目前進度會直接清除。確認後會重新產生新的棋盤。
@@ -640,7 +797,7 @@ function App() {
                 onClick={closeRestartConfirm}
                 className="inline-flex items-center justify-center rounded-full border border-[#d8c9b7] bg-[#fff8ee] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#8f7a66] uppercase transition hover:bg-[#f7efe2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
               >
-                Cancel
+                取消
               </button>
               <button
                 type="button"
@@ -648,12 +805,56 @@ function App() {
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-[#8f7a66] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#f9f6f2] uppercase transition hover:bg-[#7a6655] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
               >
                 <AppIcon icon="app:rotate-ccw" className="text-base" />
-                Confirm
+                確認重開
               </button>
             </div>
           </DialogPanel>
         </div>
       </Dialog>
+
+      <Dialog open={isInstallGuideOpen} onClose={closeInstallGuide} className="relative z-30">
+        <div className="fixed inset-0 bg-[#faf8ef]/76 backdrop-blur-[3px]" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <DialogPanel className="w-full max-w-sm rounded-[1.75rem] border border-[#decdb7] bg-[#fffaf3] px-6 py-7 text-left shadow-[0_18px_40px_rgba(118,95,72,0.18)]">
+            <DialogTitle className="font-[Georgia,'Times_New_Roman',serif] text-3xl font-bold tracking-[-0.06em] text-[#6f5d49]">
+              將 2048! 加到主畫面
+            </DialogTitle>
+            <Description className="mt-3 text-sm leading-6 text-[#75675a]">
+              {canManualInstall
+                ? "在 iPhone 或 iPad 上可透過 Safari 的分享選單手動安裝。"
+                : "你的瀏覽器目前沒有提供安裝提示，稍後可以再試一次。"}
+            </Description>
+            <ol className="mt-4 space-y-3 text-sm leading-6 text-[#75675a]">
+              <li>1. 點一下瀏覽器底部或頂部的「分享」按鈕。</li>
+              <li>2. 在選單中選擇「加入主畫面」。</li>
+              <li>3. 確認名稱為「2048!」後完成安裝。</li>
+            </ol>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={closeInstallGuide}
+                className="inline-flex items-center justify-center rounded-full border border-[#d8c9b7] bg-[#fff8ee] px-5 py-3 text-sm font-semibold tracking-[0.18em] text-[#8f7a66] uppercase transition hover:bg-[#f7efe2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f7a66]"
+              >
+                我知道了
+              </button>
+            </div>
+          </DialogPanel>
+        </div>
+      </Dialog>
+
+      {notice ? (
+        <div className="pointer-events-none fixed inset-x-4 bottom-4 z-40 flex justify-center sm:justify-end">
+          <div
+            className={`pointer-events-auto max-w-sm rounded-[1.25rem] border px-4 py-3 text-sm leading-6 shadow-[0_14px_28px_rgba(110,93,74,0.16)] ${
+              notice.tone === "success"
+                ? "border-[#d6c3a5] bg-[#fff5df] text-[#715534]"
+                : "border-[#d9cab6] bg-[#fffaf1] text-[#75675a]"
+            }`}
+          >
+            {notice.message}
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
